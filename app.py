@@ -34,13 +34,24 @@ items_removed = fetch_one(
     "SELECT COUNT(*) AS n FROM credit_items WHERE status = 'Removed'"
 )["n"]
 
-c1, c2, c3, c4, c5, c6 = st.columns(6)
-c1.metric("Total clients", total_clients)
+outstanding_row = fetch_one(
+    "SELECT COALESCE(SUM(total),0) AS amt FROM invoices "
+    "WHERE status IN ('Draft','Sent')"
+)
+outstanding = outstanding_row["amt"] if outstanding_row else 0
+paid_row = fetch_one(
+    "SELECT COALESCE(SUM(total),0) AS amt FROM invoices WHERE status='Paid'"
+)
+paid = paid_row["amt"] if paid_row else 0
+
+c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
+c1.metric("Clients", total_clients)
 c2.metric("Personal", personal_clients)
 c3.metric("Business", business_clients)
 c4.metric("Open disputes", open_disputes)
-c5.metric("Resolved disputes", resolved_disputes)
-c6.metric("Items removed", items_removed)
+c5.metric("Items removed", items_removed)
+c6.metric("Outstanding", f"${outstanding:,.0f}")
+c7.metric("Paid", f"${paid:,.0f}")
 
 if total_clients == 0:
     st.info(
@@ -154,6 +165,25 @@ with right:
 
 st.divider()
 
+st.subheader("Activity feed")
+activity = fetch_all(
+    """
+    SELECT a.created_at, a.event_type, a.description, c.name AS client
+    FROM activity_log a LEFT JOIN clients c ON c.id = a.client_id
+    ORDER BY a.created_at DESC LIMIT 15
+    """
+)
+if activity:
+    st.dataframe(
+        [dict(r) for r in activity],
+        use_container_width=True, hide_index=True,
+    )
+else:
+    st.caption("No activity yet — it will populate as you add clients, "
+               "disputes, letters, and invoices.")
+
+st.divider()
+
 st.subheader("How the workflow works")
 st.markdown(
     """
@@ -169,5 +199,8 @@ st.markdown(
        history, and export a client summary.
     6. **Tasks** – keep follow-ups organized with due dates and priorities.
     7. **Settings** – agency profile, bureau mailing addresses, demo-data seed.
+    8. **Documents** – upload and store credit reports, IDs, and bureau responses per client.
+    9. **Invoices** – generate PDF invoices from monthly fees; track outstanding vs paid.
+    10. **Activity** – audit trail of every action taken across clients.
     """
 )

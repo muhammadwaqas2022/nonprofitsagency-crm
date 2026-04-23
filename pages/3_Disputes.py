@@ -12,6 +12,7 @@ from db import (
     fetch_all,
     fetch_one,
     init_db,
+    log_activity,
 )
 
 st.set_page_config(page_title="Disputes", page_icon="⚖️", layout="wide")
@@ -84,6 +85,11 @@ with tab_add:
                     "UPDATE credit_items SET status='Disputed' WHERE id=?",
                     (item_map[item_label],),
                 )
+            log_activity(
+                "dispute.opened",
+                f"{bureau} · Round {round_number} · {status}",
+                client_id,
+            )
             st.success(f"Opened dispute #{new_id}.")
 
 # ---- List / update ------------------------------------------------------
@@ -169,6 +175,13 @@ with tab_list:
                                 "UPDATE credit_items SET status='Verified' WHERE id=?",
                                 (d["item_id"],),
                             )
+                        log_activity(
+                            "dispute.updated",
+                            f"#{d['id']} {d['bureau']} R{d['round_number']}: "
+                            f"{new_status}"
+                            + (f" · {new_outcome}" if new_outcome else ""),
+                            client_id,
+                        )
                         st.success("Dispute updated.")
                         st.rerun()
 

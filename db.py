@@ -1,10 +1,14 @@
 """SQLite persistence layer for the Credit Repair Cloud MVP."""
 
+import re
 import sqlite3
+import uuid
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Any
 
 DB_PATH = Path(__file__).parent / "credit_repair.db"
+UPLOADS_DIR = Path(__file__).parent / "uploads"
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS clients (
@@ -99,6 +103,54 @@ CREATE TABLE IF NOT EXISTS settings (
     key    TEXT PRIMARY KEY,
     value  TEXT
 );
+
+CREATE TABLE IF NOT EXISTS client_documents (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    client_id      INTEGER NOT NULL,
+    category       TEXT,
+    original_name  TEXT    NOT NULL,
+    stored_path    TEXT    NOT NULL,
+    mime_type      TEXT,
+    size_bytes     INTEGER,
+    notes          TEXT,
+    uploaded_at    TEXT    DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS invoices (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    client_id       INTEGER NOT NULL,
+    invoice_number  TEXT,
+    period_start    TEXT,
+    period_end      TEXT,
+    status          TEXT    DEFAULT 'Draft',
+    subtotal        REAL    DEFAULT 0,
+    total           REAL    DEFAULT 0,
+    notes           TEXT,
+    issued_at       TEXT,
+    paid_at         TEXT,
+    created_at      TEXT    DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS invoice_line_items (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    invoice_id   INTEGER NOT NULL,
+    description  TEXT    NOT NULL,
+    quantity     REAL    DEFAULT 1,
+    unit_price   REAL    DEFAULT 0,
+    amount       REAL    DEFAULT 0,
+    FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS activity_log (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    client_id    INTEGER,
+    event_type   TEXT    NOT NULL,
+    description  TEXT,
+    created_at   TEXT    DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE SET NULL
+);
 """
 
 
@@ -112,6 +164,12 @@ def init_db() -> None:
         }
         if "follow_up_on" not in existing:
             conn.execute("ALTER TABLE disputes ADD COLUMN follow_up_on TEXT")
+        client_cols = {
+            row[1]
+            for row in conn.execute("PRAGMA table_info(clients)").fetchall()
+        }
+        if "monthly_fee" not in client_cols:
+            conn.execute("ALTER TABLE clients ADD COLUMN monthly_fee REAL DEFAULT 0")
 
 
 @contextmanager
@@ -218,3 +276,56 @@ def get_setting(key: str, default: str = "") -> str:
 def get_settings_dict() -> dict[str, str]:
     rows = fetch_all("SELECT key, value FROM settings")
     return {r["key"]: r["value"] for r in rows}
+
+
+# ---- Activity log -------------------------------------------------------
+def log_activity(
+    event_type: str,
+    description: str,
+    client_id: int | None = None,
+) -> None:
+    execute(
+        "INSERT INTO activity_log (client_id, event_type, description) "
+        "VALUES (?,?,?)",
+        (client_id, event_type, description),
+    )
+
+
+# ---- File uploads -------------------------------------------------------
+def save_upload(client_id: int, filename: str, data: bytes) -> Path:
+    """Persist uploaded bytes under uploads/<client_id>/<uuid>_<safe_name>."""
+    UPLOADS_DIR.mkdir(exist_ok=True)
+    client_dir = UPLOADS_DIR / str(client_id)
+    client_dir.mkdir(parents=True, exist_ok=True)
+    safe = re.sub(r"[^A-Za-z0-9._-]", "_", filename) or "file"
+    target = client_dir / f"{uuid.uuid4().hex}_{safe}"
+    target.write_bytes(data)
+    return target
+
+
+def read_upload(stored_path: str) -> bytes | None:
+    p = Path(stored_path)
+    if not p.exists():
+        return None
+    return p.read_bytes()
+
+
+def delete_upload(stored_path: str) -> None:
+    p = Path(stored_path)
+    if p.exists():
+        try:
+            p.unlink()
+        except OSError:
+            pass
+
+
+DOCUMENT_CATEGORIES = [
+    "Credit Report",
+    "ID / Proof of Address",
+    "Bureau Response",
+    "Signed Authorization",
+    "Invoice / Receipt",
+    "Other",
+]
+
+INVOICE_STATUSES = ["Draft", "Sent", "Paid", "Void"]

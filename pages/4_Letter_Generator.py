@@ -7,7 +7,15 @@ import zipfile
 
 import streamlit as st
 
-from db import BUREAU_ADDRESSES, bureaus_for, execute, fetch_all, fetch_one, init_db
+from db import (
+    BUREAU_ADDRESSES,
+    bureaus_for,
+    execute,
+    fetch_all,
+    fetch_one,
+    init_db,
+    log_activity,
+)
 from letter_templates import all_templates, render
 from pdf_utils import letter_to_pdf_bytes
 
@@ -146,12 +154,22 @@ with tab_single:
                     "UPDATE disputes SET letter_body=? WHERE id=?",
                     (letter, dispute_map[target]),
                 )
+                log_activity(
+                    "letter.attached",
+                    f"{template_name} → dispute #{dispute_map[target]}",
+                    client_id,
+                )
                 st.success(f"Attached to dispute #{dispute_map[target]}.")
         else:
             st.caption("No disputes yet.")
 
     with c4:
         if st.button("📬 Create dispute", use_container_width=True):
+            log_activity(
+                "letter.created_dispute",
+                f"{template_name} · {bureau}",
+                client_id,
+            )
             new_id = execute(
                 """
                 INSERT INTO disputes (
@@ -244,4 +262,10 @@ with tab_bulk:
                     ),
                 )
                 created.append(new_id)
+            log_activity(
+                "letter.bulk_disputes",
+                f"{template_name} · {len(all_bureaus)} bureaus · "
+                f"disputes: {', '.join(f'#{i}' for i in created)}",
+                client_id,
+            )
             st.success(f"Created draft disputes: {', '.join(f'#{i}' for i in created)}")

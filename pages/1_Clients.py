@@ -2,7 +2,14 @@
 
 import streamlit as st
 
-from db import BUREAUS_BUSINESS, BUREAUS_PERSONAL, execute, fetch_all, init_db
+from db import (
+    BUREAUS_BUSINESS,
+    BUREAUS_PERSONAL,
+    execute,
+    fetch_all,
+    init_db,
+    log_activity,
+)
 
 st.set_page_config(page_title="Clients", page_icon="👤", layout="wide")
 init_db()
@@ -34,7 +41,10 @@ with tab_add:
             city = st.text_input("City")
             state = st.text_input("State", max_chars=2)
             zip_code = st.text_input("ZIP")
-            notes = st.text_area("Notes", height=90)
+            monthly_fee = st.number_input(
+                "Monthly fee ($)", min_value=0.0, step=25.0, format="%.2f"
+            )
+            notes = st.text_area("Notes", height=70)
 
         st.markdown("**Starting credit scores** (optional)")
         bureaus = BUREAUS_PERSONAL if client_type == "Personal" else BUREAUS_BUSINESS
@@ -72,8 +82,8 @@ with tab_add:
                         current_equifax, current_experian, current_transunion,
                         initial_dnb, initial_experian_biz, initial_equifax_biz,
                         current_dnb, current_experian_biz, current_equifax_biz,
-                        notes
-                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                        monthly_fee, notes
+                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                     """,
                     (
                         client_type, name.strip(), email.strip(), phone.strip(),
@@ -83,8 +93,13 @@ with tab_add:
                         eq, ex, tu, eq, ex, tu,
                         biz_vals[0], biz_vals[1], biz_vals[2],
                         biz_vals[0], biz_vals[1], biz_vals[2],
-                        notes.strip(),
+                        monthly_fee or 0, notes.strip(),
                     ),
+                )
+                log_activity(
+                    "client.created",
+                    f"{client_type}: {name}",
+                    new_id,
                 )
                 st.success(f"Saved client #{new_id}: {name}")
 
@@ -212,6 +227,11 @@ with tab_list:
                 st.markdown("---")
                 danger = st.columns([1, 5])
                 if danger[0].button("🗑 Delete client", key=f"del_{r['id']}"):
+                    log_activity(
+                        "client.deleted",
+                        f"{r['client_type']}: {r['name']}",
+                        None,
+                    )
                     execute("DELETE FROM clients WHERE id=?", (r["id"],))
                     st.warning(f"Deleted client #{r['id']}.")
                     st.rerun()

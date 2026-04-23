@@ -13,6 +13,7 @@ from db import (
     fetch_all,
     fetch_one,
     init_db,
+    log_activity,
 )
 
 st.set_page_config(page_title="Credit Items", page_icon="📝", layout="wide")
@@ -72,6 +73,11 @@ with tab_add:
                         reason.strip(),
                     ),
                 )
+                log_activity(
+                    "item.created",
+                    f"{bureau} · {creditor} · {item_type}",
+                    client_id,
+                )
                 st.success(f"Saved item #{new_id}.")
 
 with tab_list:
@@ -111,6 +117,11 @@ with tab_list:
                     execute(
                         "UPDATE credit_items SET status=? WHERE id=?",
                         (new_status, it["id"]),
+                    )
+                    log_activity(
+                        "item.status",
+                        f"{it['bureau']} · {it['creditor']} → {new_status}",
+                        client_id,
                     )
                     st.success("Status updated.")
                     st.rerun()
@@ -201,6 +212,11 @@ with tab_import:
 
             if len(good) and st.button("📥 Import rows", type="primary"):
                 inserted = 0
+                log_activity(
+                    "item.import.start",
+                    f"Importing {len(good)} row(s) from CSV",
+                    client_id,
+                )
                 for _, row in good.iterrows():
                     try:
                         balance = (
@@ -229,5 +245,10 @@ with tab_import:
                         ),
                     )
                     inserted += 1
+                log_activity(
+                    "item.import.done",
+                    f"Imported {inserted} row(s) from CSV",
+                    client_id,
+                )
                 st.success(f"Imported {inserted} item(s).")
                 st.rerun()

@@ -12,6 +12,7 @@ from db import (
     fetch_one,
     get_setting,
     init_db,
+    log_activity,
     set_setting,
 )
 
@@ -97,15 +98,17 @@ with tab_data:
                     client_type, name, email, phone, identifier,
                     dob_or_founded, address, city, state, zip,
                     initial_equifax, initial_experian, initial_transunion,
-                    current_equifax, current_experian, current_transunion
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    current_equifax, current_experian, current_transunion,
+                    monthly_fee
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """,
                 (
                     "Personal", "Jane Sample", "jane@example.com", "555-0100",
                     "1234", "1985-04-12", "42 Oak Lane", "Austin", "TX", "78701",
-                    562, 571, 558, 604, 612, 598,
+                    562, 571, 558, 604, 612, 598, 99.0,
                 ),
             )
+            log_activity("client.created", "Personal: Jane Sample", pid)
             # --- Business client ---
             bid = execute(
                 """
@@ -113,16 +116,18 @@ with tab_data:
                     client_type, name, email, phone, identifier,
                     dob_or_founded, address, city, state, zip,
                     initial_dnb, initial_experian_biz, initial_equifax_biz,
-                    current_dnb, current_experian_biz, current_equifax_biz
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    current_dnb, current_experian_biz, current_equifax_biz,
+                    monthly_fee
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """,
                 (
                     "Business", "Acme Widgets LLC", "ops@acmewidgets.com",
                     "555-0200", "12-3456789", "2018-06-01",
                     "500 Industrial Pkwy", "Dallas", "TX", "75201",
-                    35, 40, 42, 58, 61, 65,
+                    35, 40, 42, 58, 61, 65, 249.0,
                 ),
             )
+            log_activity("client.created", "Business: Acme Widgets LLC", bid)
 
             # --- Credit items for Jane ---
             items = [
@@ -235,9 +240,65 @@ with tab_data:
                     (pid, snap_date, "TransUnion", 598 + offsets[2]),
                 )
 
+            # --- Invoices: 1 paid, 1 outstanding for Jane ---
+            last_month = (today.replace(day=1) - timedelta(days=1)).replace(day=1)
+            last_month_end = today.replace(day=1) - timedelta(days=1)
+            paid_inv = execute(
+                """
+                INSERT INTO invoices (
+                    client_id, invoice_number, period_start, period_end,
+                    status, subtotal, total, issued_at, paid_at, notes
+                ) VALUES (?,?,?,?,?,?,?,?,?,?)
+                """,
+                (
+                    pid, "INV-0001",
+                    last_month.isoformat(), last_month_end.isoformat(),
+                    "Paid", 99.0, 99.0,
+                    last_month.isoformat(),
+                    (last_month + timedelta(days=7)).isoformat(),
+                    "Paid via ACH.",
+                ),
+            )
+            execute(
+                "INSERT INTO invoice_line_items (invoice_id, description, "
+                "quantity, unit_price, amount) VALUES (?,?,?,?,?)",
+                (paid_inv, "Credit repair service · prior month",
+                 1, 99.0, 99.0),
+            )
+            current_inv = execute(
+                """
+                INSERT INTO invoices (
+                    client_id, invoice_number, period_start, period_end,
+                    status, subtotal, total, issued_at
+                ) VALUES (?,?,?,?,?,?,?,?)
+                """,
+                (
+                    pid, "INV-0002",
+                    today.replace(day=1).isoformat(), today.isoformat(),
+                    "Sent", 99.0, 99.0, today.isoformat(),
+                ),
+            )
+            execute(
+                "INSERT INTO invoice_line_items (invoice_id, description, "
+                "quantity, unit_price, amount) VALUES (?,?,?,?,?)",
+                (current_inv, "Credit repair service · current month",
+                 1, 99.0, 99.0),
+            )
+            log_activity("invoice.created", "INV-0001 · $99.00 · Paid", pid)
+            log_activity("invoice.created", "INV-0002 · $99.00 · Sent", pid)
+
+            # --- Seed activity ---
+            log_activity("item.created",
+                         "Equifax · ABC Collections · Collection", pid)
+            log_activity("dispute.opened",
+                         "Experian · Round 1 · Mailed", pid)
+            log_activity("dispute.updated",
+                         "Experian R1: Resolved · Removed", pid)
+
             st.success(
-                f"Seeded 2 clients, 5 items, 3 disputes, 4 tasks, and score "
-                f"history. Navigate to **Clients** to start exploring."
+                "Seeded 2 clients, 5 items, 3 disputes, 4 tasks, 2 invoices, "
+                "and 3 months of score history. Navigate to **Clients** to "
+                "start exploring."
             )
             st.rerun()
 
@@ -249,8 +310,11 @@ with tab_data:
     )
     if st.button("Delete everything", type="secondary"):
         if confirm.strip() == "WIPE":
-            for table in ["tasks", "score_history", "disputes",
-                          "credit_items", "clients"]:
+            for table in [
+                "activity_log", "invoice_line_items", "invoices",
+                "client_documents", "tasks", "score_history", "disputes",
+                "credit_items", "clients",
+            ]:
                 execute(f"DELETE FROM {table}")
             st.warning("All data deleted.")
             st.rerun()
