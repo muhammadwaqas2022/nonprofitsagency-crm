@@ -1,43 +1,91 @@
+"""Credit Repair Cloud - MVP Dashboard.
+
+Streamlit multipage app. Additional pages live in the `pages/` folder.
+"""
+
 import streamlit as st
-import pandas as pd
 
-# 1. Page Setup
-st.set_page_config(page_title="Agency CRM", page_icon="🏛️", layout="wide")
-st.title("Nonprofit Grant & Fundraising CRM 🏛️")
+from db import fetch_all, fetch_one, init_db
 
-# 2. Function to load data directly from your CSV
-@st.cache_data # This makes the app run super fast!
-def load_data():
-    # Read the CSV file you uploaded to GitHub
-    df = pd.read_csv('agency_crm.csv')
-    
-    # Add our default CRM columns if they don't exist yet
-    if 'app_status' not in df.columns:
-        df['app_status'] = 'Not Started'
-    if 'fundraising_active' not in df.columns:
-        df['fundraising_active'] = 'No'
-        
-    # Make sure all data is text so our search doesn't crash
-    df = df.astype(str)
-    return df
+st.set_page_config(page_title="Credit Repair Cloud", page_icon="💳", layout="wide")
 
-# 3. Load the data
-try:
-    df = load_data()
-except FileNotFoundError:
-    st.error("⚠️ Cannot find 'agency_crm.csv'. Make sure it is uploaded to your GitHub repository!")
-    st.stop()
+init_db()
 
-# 4. The Search Bar
-search_term = st.text_input("🔍 Search by Nonprofit Name, EIN, or Email:")
+st.title("Credit Repair Cloud 💳")
+st.caption("MVP for repairing personal and business credit")
 
-# 5. Filter and Display the Data
-if search_term:
-    # This checks every column for the search term
-    mask = df.apply(lambda row: row.str.contains(search_term, case=False).any(), axis=1)
-    filtered_df = df[mask]
-else:
-    filtered_df = df
+# ---- KPIs ---------------------------------------------------------------
+total_clients = fetch_one("SELECT COUNT(*) AS n FROM clients")["n"]
+personal_clients = fetch_one(
+    "SELECT COUNT(*) AS n FROM clients WHERE client_type = 'Personal'"
+)["n"]
+business_clients = fetch_one(
+    "SELECT COUNT(*) AS n FROM clients WHERE client_type = 'Business'"
+)["n"]
+open_disputes = fetch_one(
+    "SELECT COUNT(*) AS n FROM disputes WHERE status NOT IN ('Resolved','Rejected')"
+)["n"]
+resolved_disputes = fetch_one(
+    "SELECT COUNT(*) AS n FROM disputes WHERE status = 'Resolved'"
+)["n"]
+items_removed = fetch_one(
+    "SELECT COUNT(*) AS n FROM credit_items WHERE status = 'Removed'"
+)["n"]
 
-st.write(f"**Found {len(filtered_df)} nonprofits:**")
-st.dataframe(filtered_df, use_container_width=True)
+c1, c2, c3, c4, c5, c6 = st.columns(6)
+c1.metric("Total clients", total_clients)
+c2.metric("Personal", personal_clients)
+c3.metric("Business", business_clients)
+c4.metric("Open disputes", open_disputes)
+c5.metric("Resolved disputes", resolved_disputes)
+c6.metric("Items removed", items_removed)
+
+st.divider()
+
+# ---- Recent activity -----------------------------------------------------
+left, right = st.columns(2)
+
+with left:
+    st.subheader("Recent clients")
+    rows = fetch_all(
+        "SELECT id, client_type, name, status, created_at "
+        "FROM clients ORDER BY created_at DESC LIMIT 10"
+    )
+    if rows:
+        st.dataframe(
+            [dict(r) for r in rows],
+            use_container_width=True,
+            hide_index=True,
+        )
+    else:
+        st.info("No clients yet. Head to **Clients** in the sidebar to add one.")
+
+with right:
+    st.subheader("Recent disputes")
+    rows = fetch_all(
+        "SELECT d.id, c.name AS client, d.bureau, d.round_number, d.status, d.date_sent "
+        "FROM disputes d JOIN clients c ON c.id = d.client_id "
+        "ORDER BY d.created_at DESC LIMIT 10"
+    )
+    if rows:
+        st.dataframe(
+            [dict(r) for r in rows],
+            use_container_width=True,
+            hide_index=True,
+        )
+    else:
+        st.info("No disputes yet. Create one from the **Disputes** page.")
+
+st.divider()
+
+st.subheader("How the workflow works")
+st.markdown(
+    """
+    1. **Clients** – onboard a personal or business client, record starting credit scores.
+    2. **Credit Items** – list the negative tradelines, inquiries, or public records.
+    3. **Disputes** – open a dispute against one or more items, track rounds and outcomes.
+    4. **Letter Generator** – produce an FCRA / FDCPA-compliant letter from a template,
+       copy or download it, and attach it to the dispute record.
+    5. **Progress** – compare initial vs current bureau scores and removed items per client.
+    """
+)
