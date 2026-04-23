@@ -1,5 +1,8 @@
 """Credit Items page: negative tradelines, inquiries and public records per client."""
 
+import io
+
+import pandas as pd
 import streamlit as st
 
 from db import (
@@ -32,7 +35,7 @@ client = fetch_one("SELECT * FROM clients WHERE id = ?", (client_id,))
 
 bureaus = bureaus_for(client["client_type"])
 
-tab_list, tab_add = st.tabs(["Items", "➕ Add item"])
+tab_list, tab_add, tab_import = st.tabs(["Items", "➕ Add item", "📥 Import CSV"])
 
 with tab_add:
     with st.form("add_item", clear_on_submit=True):
@@ -115,3 +118,116 @@ with tab_list:
                     execute("DELETE FROM credit_items WHERE id=?", (it["id"],))
                     st.warning(f"Deleted item #{it['id']}.")
                     st.rerun()
+
+# ---- CSV import ---------------------------------------------------------
+with tab_import:
+    st.markdown(
+        "Bulk-load credit items from a CSV. Required columns: "
+        "**bureau, creditor, item_type**. Optional columns: "
+        "**account_number, balance, date_opened, reason_to_dispute**."
+    )
+
+    REQUIRED = ["bureau", "creditor", "item_type"]
+    OPTIONAL = ["account_number", "balance", "date_opened", "reason_to_dispute"]
+    ALL_COLS = REQUIRED + OPTIONAL
+
+    sample = pd.DataFrame(
+        [
+            {
+                "bureau": bureaus[0],
+                "creditor": "ABC Collections",
+                "item_type": "Collection",
+                "account_number": "XXXX1234",
+                "balance": 450.00,
+                "date_opened": "2022-05-01",
+                "reason_to_dispute": "Not mine",
+            },
+            {
+                "bureau": bureaus[-1],
+                "creditor": "Capital Bank",
+                "item_type": "Late Payment",
+                "account_number": "XXXX9876",
+                "balance": 0,
+                "date_opened": "2021-11-15",
+                "reason_to_dispute": "Payment was on time",
+            },
+        ]
+    )
+    st.download_button(
+        "⬇️ Download sample CSV",
+        data=sample.to_csv(index=False),
+        file_name="credit_items_sample.csv",
+        mime="text/csv",
+    )
+
+    uploaded = st.file_uploader("Upload CSV", type=["csv"], key="items_csv")
+    if uploaded is not None:
+        try:
+            df = pd.read_csv(io.BytesIO(uploaded.getvalue()))
+        except Exception as exc:
+            st.error(f"Could not read CSV: {exc}")
+            st.stop()
+
+        df.columns = [c.strip().lower() for c in df.columns]
+        missing = [c for c in REQUIRED if c not in df.columns]
+        if missing:
+            st.error(f"Missing required column(s): {', '.join(missing)}")
+        else:
+            # Keep only recognized columns
+            df = df[[c for c in ALL_COLS if c in df.columns]].copy()
+            df = df.fillna("")
+
+            # Validate bureau + item_type against allowed values for this client
+            valid_bureaus = set(bureaus)
+            valid_items = set(ITEM_TYPES)
+            df["_bureau_ok"] = df["bureau"].astype(str).isin(valid_bureaus)
+            df["_item_ok"] = df["item_type"].astype(str).isin(valid_items)
+
+            good = df[df["_bureau_ok"] & df["_item_ok"]].drop(
+                columns=["_bureau_ok", "_item_ok"]
+            )
+            bad = df[~(df["_bureau_ok"] & df["_item_ok"])]
+
+            st.markdown(f"**Preview — {len(good)} valid row(s):**")
+            st.dataframe(good, use_container_width=True, hide_index=True)
+
+            if len(bad):
+                st.warning(
+                    f"{len(bad)} row(s) skipped — bureau must be one of "
+                    f"{sorted(valid_bureaus)} and item_type one of "
+                    f"{sorted(valid_items)}."
+                )
+                st.dataframe(bad, use_container_width=True, hide_index=True)
+
+            if len(good) and st.button("📥 Import rows", type="primary"):
+                inserted = 0
+                for _, row in good.iterrows():
+                    try:
+                        balance = (
+                            float(row["balance"])
+                            if "balance" in row and str(row["balance"]).strip() != ""
+                            else None
+                        )
+                    except (TypeError, ValueError):
+                        balance = None
+                    execute(
+                        """
+                        INSERT INTO credit_items (
+                            client_id, bureau, creditor, account_number,
+                            item_type, balance, date_opened, reason_to_dispute
+                        ) VALUES (?,?,?,?,?,?,?,?)
+                        """,
+                        (
+                            client_id,
+                            str(row["bureau"]).strip(),
+                            str(row["creditor"]).strip(),
+                            str(row.get("account_number", "")).strip(),
+                            str(row["item_type"]).strip(),
+                            balance,
+                            str(row.get("date_opened", "")).strip(),
+                            str(row.get("reason_to_dispute", "")).strip(),
+                        ),
+                    )
+                    inserted += 1
+                st.success(f"Imported {inserted} item(s).")
+                st.rerun()

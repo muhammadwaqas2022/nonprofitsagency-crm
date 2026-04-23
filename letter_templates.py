@@ -15,8 +15,9 @@ PERSONAL_TEMPLATES: dict[str, str] = {
 {client_address}
 {client_city}, {client_state} {client_zip}
 
-{bureau}
-Consumer Dispute Center
+{bureau_address}
+
+Attn: Consumer Dispute Center
 
 To Whom It May Concern,
 
@@ -51,8 +52,9 @@ DOB: {dob}
 {client_address}
 {client_city}, {client_state} {client_zip}
 
-{bureau}
-Consumer Dispute Center
+{bureau_address}
+
+Attn: Consumer Dispute Center
 
 Re: Follow-up on prior dispute
 
@@ -89,8 +91,9 @@ SSN: XXX-XX-{ssn_last4}
 {client_address}
 {client_city}, {client_state} {client_zip}
 
-{bureau}
-Consumer Dispute Center
+{bureau_address}
+
+Attn: Consumer Dispute Center
 
 To Whom It May Concern,
 
@@ -181,8 +184,9 @@ BUSINESS_TEMPLATES: dict[str, str] = {
 {client_city}, {client_state} {client_zip}
 EIN: {ein}
 
-{bureau}
-Commercial Credit Dispute Department
+{bureau_address}
+
+Attn: Commercial Credit Dispute Department
 
 To Whom It May Concern,
 
@@ -214,8 +218,9 @@ Sincerely,
 {client_city}, {client_state} {client_zip}
 EIN: {ein}
 
-{bureau}
-Commercial Credit Department
+{bureau_address}
+
+Attn: Commercial Credit Department
 
 To Whom It May Concern,
 
@@ -251,6 +256,7 @@ def render(template_body: str, context: dict) -> str:
         "client_state": "",
         "client_zip": "",
         "bureau": "",
+        "bureau_address": "",
         "creditor": "",
         "account_number": "",
         "item_type": "",

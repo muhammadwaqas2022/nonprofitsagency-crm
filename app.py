@@ -3,6 +3,8 @@
 Streamlit multipage app. Additional pages live in the `pages/` folder.
 """
 
+from datetime import date, timedelta
+
 import streamlit as st
 
 from db import fetch_all, fetch_one, init_db
@@ -40,6 +42,82 @@ c4.metric("Open disputes", open_disputes)
 c5.metric("Resolved disputes", resolved_disputes)
 c6.metric("Items removed", items_removed)
 
+if total_clients == 0:
+    st.info(
+        "**First time here?** Head to **⚙️ Settings → Data utilities** and "
+        "click **Seed demo data** to populate the app with a sample "
+        "personal and business client so you can see every feature in action."
+    )
+
+st.divider()
+
+# ---- Attention needed ---------------------------------------------------
+today = date.today().isoformat()
+in_30 = (date.today() + timedelta(days=30)).isoformat()
+
+overdue_tasks = fetch_all(
+    """
+    SELECT t.id, t.title, t.due_date, t.priority, c.name AS client
+    FROM tasks t LEFT JOIN clients c ON c.id = t.client_id
+    WHERE t.done = 0 AND t.due_date IS NOT NULL AND t.due_date < ?
+    ORDER BY t.due_date ASC LIMIT 10
+    """,
+    (today,),
+)
+upcoming_tasks = fetch_all(
+    """
+    SELECT t.id, t.title, t.due_date, t.priority, c.name AS client
+    FROM tasks t LEFT JOIN clients c ON c.id = t.client_id
+    WHERE t.done = 0 AND (t.due_date IS NULL OR t.due_date >= ?)
+    ORDER BY COALESCE(t.due_date, '9999-99-99') ASC LIMIT 10
+    """,
+    (today,),
+)
+stale_disputes = fetch_all(
+    """
+    SELECT d.id, d.bureau, d.round_number, d.status, d.date_sent,
+           c.name AS client
+    FROM disputes d JOIN clients c ON c.id = d.client_id
+    WHERE d.status = 'Awaiting Response' AND d.date_sent IS NOT NULL
+      AND d.date_sent <= ?
+    ORDER BY d.date_sent ASC LIMIT 10
+    """,
+    ((date.today() - timedelta(days=30)).isoformat(),),
+)
+
+st.subheader("Attention needed")
+attn_cols = st.columns(3)
+
+with attn_cols[0]:
+    st.markdown(f"**🔴 Overdue tasks** ({len(overdue_tasks)})")
+    if overdue_tasks:
+        st.dataframe(
+            [dict(r) for r in overdue_tasks],
+            use_container_width=True, hide_index=True,
+        )
+    else:
+        st.caption("Nothing overdue.")
+
+with attn_cols[1]:
+    st.markdown(f"**⏳ Upcoming tasks** ({len(upcoming_tasks)})")
+    if upcoming_tasks:
+        st.dataframe(
+            [dict(r) for r in upcoming_tasks],
+            use_container_width=True, hide_index=True,
+        )
+    else:
+        st.caption("No upcoming tasks.")
+
+with attn_cols[2]:
+    st.markdown(f"**📬 Stale disputes (30d+)** ({len(stale_disputes)})")
+    if stale_disputes:
+        st.dataframe(
+            [dict(r) for r in stale_disputes],
+            use_container_width=True, hide_index=True,
+        )
+    else:
+        st.caption("All disputes are within the 30-day response window.")
+
 st.divider()
 
 # ---- Recent activity -----------------------------------------------------
@@ -54,8 +132,7 @@ with left:
     if rows:
         st.dataframe(
             [dict(r) for r in rows],
-            use_container_width=True,
-            hide_index=True,
+            use_container_width=True, hide_index=True,
         )
     else:
         st.info("No clients yet. Head to **Clients** in the sidebar to add one.")
@@ -63,15 +140,14 @@ with left:
 with right:
     st.subheader("Recent disputes")
     rows = fetch_all(
-        "SELECT d.id, c.name AS client, d.bureau, d.round_number, d.status, d.date_sent "
-        "FROM disputes d JOIN clients c ON c.id = d.client_id "
+        "SELECT d.id, c.name AS client, d.bureau, d.round_number, d.status, "
+        "d.date_sent FROM disputes d JOIN clients c ON c.id = d.client_id "
         "ORDER BY d.created_at DESC LIMIT 10"
     )
     if rows:
         st.dataframe(
             [dict(r) for r in rows],
-            use_container_width=True,
-            hide_index=True,
+            use_container_width=True, hide_index=True,
         )
     else:
         st.info("No disputes yet. Create one from the **Disputes** page.")
@@ -81,11 +157,17 @@ st.divider()
 st.subheader("How the workflow works")
 st.markdown(
     """
-    1. **Clients** – onboard a personal or business client, record starting credit scores.
-    2. **Credit Items** – list the negative tradelines, inquiries, or public records.
-    3. **Disputes** – open a dispute against one or more items, track rounds and outcomes.
-    4. **Letter Generator** – produce an FCRA / FDCPA-compliant letter from a template,
-       copy or download it, and attach it to the dispute record.
-    5. **Progress** – compare initial vs current bureau scores and removed items per client.
+    1. **Clients** – onboard a personal or business client, record starting scores.
+    2. **Credit Items** – list negative tradelines, inquiries, public records
+       (or bulk-import them via CSV).
+    3. **Disputes** – open a dispute against one or more items, track rounds
+       and outcomes.
+    4. **Letter Generator** – produce an FCRA / FDCPA-compliant letter from a
+       template; download as TXT or PDF, attach to a dispute, or bulk-generate
+       letters for all bureaus in one click.
+    5. **Progress** – compare initial vs current bureau scores, view score
+       history, and export a client summary.
+    6. **Tasks** – keep follow-ups organized with due dates and priorities.
+    7. **Settings** – agency profile, bureau mailing addresses, demo-data seed.
     """
 )

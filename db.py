@@ -66,9 +66,38 @@ CREATE TABLE IF NOT EXISTS disputes (
     outcome        TEXT,
     letter_body    TEXT,
     notes          TEXT,
+    follow_up_on   TEXT,
     created_at     TEXT    DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
     FOREIGN KEY (item_id)   REFERENCES credit_items(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS tasks (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    client_id     INTEGER,
+    dispute_id    INTEGER,
+    title         TEXT    NOT NULL,
+    due_date      TEXT,
+    priority      TEXT    DEFAULT 'Medium',
+    done          INTEGER DEFAULT 0,
+    notes         TEXT,
+    created_at    TEXT    DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (client_id)  REFERENCES clients(id)  ON DELETE CASCADE,
+    FOREIGN KEY (dispute_id) REFERENCES disputes(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS score_history (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    client_id    INTEGER NOT NULL,
+    recorded_at  TEXT    DEFAULT CURRENT_TIMESTAMP,
+    bureau       TEXT    NOT NULL,
+    score        INTEGER,
+    FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS settings (
+    key    TEXT PRIMARY KEY,
+    value  TEXT
 );
 """
 
@@ -76,6 +105,13 @@ CREATE TABLE IF NOT EXISTS disputes (
 def init_db() -> None:
     with sqlite3.connect(DB_PATH) as conn:
         conn.executescript(SCHEMA)
+        # Lightweight migration: add columns that may be missing from older DBs.
+        existing = {
+            row[1]
+            for row in conn.execute("PRAGMA table_info(disputes)").fetchall()
+        }
+        if "follow_up_on" not in existing:
+            conn.execute("ALTER TABLE disputes ADD COLUMN follow_up_on TEXT")
 
 
 @contextmanager
@@ -126,3 +162,59 @@ ITEM_STATUSES = ["Not Disputed", "Disputed", "Removed", "Verified"]
 
 def bureaus_for(client_type: str) -> list[str]:
     return BUREAUS_PERSONAL if client_type == "Personal" else BUREAUS_BUSINESS
+
+
+# Mailing addresses for the major bureaus. Printed above the salutation on
+# outgoing dispute letters. Addresses verified against bureau websites.
+BUREAU_ADDRESSES: dict[str, str] = {
+    "Equifax": (
+        "Equifax Information Services LLC\n"
+        "P.O. Box 740256\n"
+        "Atlanta, GA 30374"
+    ),
+    "Experian": (
+        "Experian\n"
+        "P.O. Box 4500\n"
+        "Allen, TX 75013"
+    ),
+    "TransUnion": (
+        "TransUnion Consumer Solutions\n"
+        "P.O. Box 2000\n"
+        "Chester, PA 19016"
+    ),
+    "Dun & Bradstreet": (
+        "Dun & Bradstreet\n"
+        "103 JFK Parkway\n"
+        "Short Hills, NJ 07078"
+    ),
+    "Experian Business": (
+        "Experian Business Credit\n"
+        "P.O. Box 5007\n"
+        "Costa Mesa, CA 92628"
+    ),
+    "Equifax Business": (
+        "Equifax Commercial Services\n"
+        "P.O. Box 740241\n"
+        "Atlanta, GA 30374"
+    ),
+}
+
+
+# ---- Settings helpers ---------------------------------------------------
+def set_setting(key: str, value: str) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT INTO settings(key, value) VALUES(?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (key, value),
+        )
+
+
+def get_setting(key: str, default: str = "") -> str:
+    row = fetch_one("SELECT value FROM settings WHERE key = ?", (key,))
+    return row["value"] if row else default
+
+
+def get_settings_dict() -> dict[str, str]:
+    rows = fetch_all("SELECT key, value FROM settings")
+    return {r["key"]: r["value"] for r in rows}
