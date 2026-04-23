@@ -7,14 +7,24 @@ from datetime import date, timedelta
 
 import streamlit as st
 
+from auth import current_user, logout_button, require_auth
 from db import fetch_all, fetch_one, init_db
 
 st.set_page_config(page_title="Credit Repair Cloud", page_icon="💳", layout="wide")
 
 init_db()
+require_auth()
+logout_button()
 
 st.title("Credit Repair Cloud 💳")
-st.caption("MVP for repairing personal and business credit")
+_user = current_user()
+if _user:
+    st.caption(
+        f"MVP for repairing personal and business credit · signed in as "
+        f"**{_user['full_name'] or _user['username']}** ({_user['role']})"
+    )
+else:
+    st.caption("MVP for repairing personal and business credit")
 
 # ---- KPIs ---------------------------------------------------------------
 total_clients = fetch_one("SELECT COUNT(*) AS n FROM clients")["n"]

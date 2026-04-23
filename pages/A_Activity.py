@@ -3,9 +3,12 @@
 import streamlit as st
 
 from db import execute, fetch_all, init_db
+from auth import logout_button, require_auth
 
 st.set_page_config(page_title="Activity", page_icon="🕒", layout="wide")
 init_db()
+require_auth()
+logout_button()
 
 st.title("Activity 🕒")
 st.caption("Audit trail of actions taken on clients, items, disputes, "

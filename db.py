@@ -151,6 +151,19 @@ CREATE TABLE IF NOT EXISTS activity_log (
     created_at   TEXT    DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE SET NULL
 );
+
+CREATE TABLE IF NOT EXISTS users (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    username        TEXT    NOT NULL UNIQUE,
+    password_hash   TEXT    NOT NULL,
+    password_salt   TEXT    NOT NULL,
+    role            TEXT    NOT NULL DEFAULT 'agent',
+    full_name       TEXT,
+    email           TEXT,
+    active          INTEGER NOT NULL DEFAULT 1,
+    last_login      TEXT,
+    created_at      TEXT    DEFAULT CURRENT_TIMESTAMP
+);
 """
 
 

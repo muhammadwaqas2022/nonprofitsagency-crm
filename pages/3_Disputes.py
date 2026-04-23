@@ -14,9 +14,12 @@ from db import (
     init_db,
     log_activity,
 )
+from auth import logout_button, require_auth
 
 st.set_page_config(page_title="Disputes", page_icon="⚖️", layout="wide")
 init_db()
+require_auth()
+logout_button()
 
 st.title("Disputes ⚖️")
 st.caption("Open disputes against credit items and track each round to resolution.")

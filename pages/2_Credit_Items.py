@@ -15,9 +15,12 @@ from db import (
     init_db,
     log_activity,
 )
+from auth import logout_button, require_auth
 
 st.set_page_config(page_title="Credit Items", page_icon="📝", layout="wide")
 init_db()
+require_auth()
+logout_button()
 
 st.title("Credit Items 📝")
 st.caption("Track the negative items that will drive dispute activity.")

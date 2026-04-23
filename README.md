@@ -32,6 +32,10 @@ A Streamlit + SQLite app for repairing personal and business credit.
   as the header.
 - **Activity** – full audit trail of creates/updates/deletes across
   clients, items, disputes, letters, documents, and invoices. CSV export.
+- **Users** – multi-user auth with admin/agent roles. Soft-gated: the app
+  runs open until you create the first admin (via Users page or Settings
+  → Security). After that, every page requires sign-in. PBKDF2-SHA256
+  password hashing with per-user salt, no external dependencies.
 
 ## Run locally
 
@@ -53,12 +57,13 @@ so every page is populated immediately.
 ## Files
 
 - `app.py` – dashboard + KPIs + attention lane + activity feed
+- `auth.py` – PBKDF2 password hashing, login/bootstrap UI, require_auth helpers
 - `db.py` – schema, helpers, constants, activity log, file upload helpers
 - `letter_templates.py` – dispute letter templates with merge fields
 - `pdf_utils.py` – reportlab-based letter + invoice PDF renderer
 - `pages/` – Streamlit multipage pages:
   - 1 Clients · 2 Credit Items · 3 Disputes · 4 Letter Generator
   - 5 Progress · 6 Tasks · 7 Settings · 8 Documents · 9 Invoices
-  - A Activity
+  - A Activity · B Users
 - `credit_repair.db` – auto-created SQLite (gitignored)
 - `uploads/` – per-client uploaded files (gitignored)

@@ -4,6 +4,14 @@ from datetime import date, timedelta
 
 import streamlit as st
 
+from auth import (
+    current_user,
+    logout_button,
+    render_bootstrap_form,
+    render_change_own_password,
+    require_auth,
+    users_exist,
+)
 from db import (
     BUREAU_ADDRESSES,
     DB_PATH,
@@ -18,11 +26,13 @@ from db import (
 
 st.set_page_config(page_title="Settings", page_icon="⚙️", layout="wide")
 init_db()
+require_auth()
+logout_button()
 
 st.title("Settings ⚙️")
 
-tab_agency, tab_bureau, tab_data = st.tabs(
-    ["Agency profile", "Bureau addresses", "Data utilities"]
+tab_agency, tab_bureau, tab_security, tab_data = st.tabs(
+    ["Agency profile", "Bureau addresses", "Security", "Data utilities"]
 )
 
 # ---- Agency profile -----------------------------------------------------
@@ -69,6 +79,27 @@ with tab_bureau:
     for bureau, addr in BUREAU_ADDRESSES.items():
         st.markdown(f"**{bureau}**")
         st.code(addr, language="text")
+
+# ---- Security -----------------------------------------------------------
+with tab_security:
+    if not users_exist():
+        st.warning(
+            "🔓 **Authentication is currently OFF.** Anyone with access to "
+            "this app can view all data. Create the first admin account "
+            "below to enable sign-in."
+        )
+        render_bootstrap_form()
+    else:
+        st.success(
+            "🔐 Authentication is enabled. Manage users on the **Users** "
+            "page (admin only)."
+        )
+        user = current_user()
+        if user:
+            st.caption(
+                f"You're signed in as **{user['username']}** ({user['role']})."
+            )
+            render_change_own_password()
 
 # ---- Data utilities -----------------------------------------------------
 with tab_data:

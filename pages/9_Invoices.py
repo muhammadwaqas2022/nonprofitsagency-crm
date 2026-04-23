@@ -13,10 +13,13 @@ from db import (
     init_db,
     log_activity,
 )
+from auth import logout_button, require_auth
 from pdf_utils import invoice_to_pdf_bytes
 
 st.set_page_config(page_title="Invoices", page_icon="💵", layout="wide")
 init_db()
+require_auth()
+logout_button()
 
 st.title("Invoices 💵")
 st.caption("Track monthly fees and one-off charges per client.")

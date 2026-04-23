@@ -16,11 +16,14 @@ from db import (
     init_db,
     log_activity,
 )
+from auth import logout_button, require_auth
 from letter_templates import all_templates, render
 from pdf_utils import letter_to_pdf_bytes
 
 st.set_page_config(page_title="Letter Generator", page_icon="✉️", layout="wide")
 init_db()
+require_auth()
+logout_button()
 
 st.title("Letter Generator ✉️")
 st.caption(

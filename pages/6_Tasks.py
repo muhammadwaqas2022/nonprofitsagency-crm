@@ -5,9 +5,12 @@ from datetime import date
 import streamlit as st
 
 from db import execute, fetch_all, fetch_one, init_db
+from auth import logout_button, require_auth
 
 st.set_page_config(page_title="Tasks", page_icon="✅", layout="wide")
 init_db()
+require_auth()
+logout_button()
 
 st.title("Tasks & Reminders ✅")
 st.caption("Follow-ups for clients and open disputes.")

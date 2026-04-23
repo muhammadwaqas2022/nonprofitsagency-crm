@@ -12,9 +12,12 @@ from db import (
     read_upload,
     save_upload,
 )
+from auth import logout_button, require_auth
 
 st.set_page_config(page_title="Documents", page_icon="📎", layout="wide")
 init_db()
+require_auth()
+logout_button()
 
 st.title("Documents 📎")
 st.caption("Upload and manage files for each client (credit reports, IDs, "
